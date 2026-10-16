@@ -1,0 +1,33 @@
+# Binaries and build outputs
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+pipeforge-service
+
+# Test and coverage artifacts
+*.out
+*.test
+coverage.html
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+
+# IDE and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Deployment state & scratch
+deploy/releases/
+deploy/current-release.env
+
