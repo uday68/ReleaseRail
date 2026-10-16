@@ -1,0 +1,46 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Lint, Test & Compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go Toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Verify Formatting (gofmt)
+        run: |
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "::error::The following files are not formatted with gofmt:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+
+      - name: Run Static Analysis (go vet)
+        run: go vet ./...
+
+      - name: Run Tests with Race Detector
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Verify Compilation
+        run: |
+          mkdir -p bin
+          CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=${{ github.sha }} -X main.commit=${{ github.sha }} -X main.buildTime=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" -o bin/pipeforge-service ./cmd/pipeforge-service
