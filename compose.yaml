@@ -1,0 +1,27 @@
+services:
+  pipeforge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${RELEASE_VERSION:-local}
+        COMMIT: ${RELEASE_COMMIT:-local}
+        BUILD_TIME: ${RELEASE_BUILD_TIME:-local}
+    image: ${PIPEFORGE_IMAGE:-pipeforge-service:latest}
+    container_name: pipeforge-app
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8085}:8080"
+    environment:
+      - PIPEFORGE_HOST=0.0.0.0
+      - PIPEFORGE_PORT=8080
+      - PIPEFORGE_READ_TIMEOUT=5s
+      - PIPEFORGE_WRITE_TIMEOUT=10s
+      - PIPEFORGE_IDLE_TIMEOUT=60s
+      - PIPEFORGE_SHUTDOWN_TIMEOUT=10s
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 3s

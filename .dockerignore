@@ -1,0 +1,14 @@
+.git
+.github
+bin/
+dist/
+*.exe
+*.test
+*.out
+coverage.html
+.env*
+docs/
+deploy/
+scripts/
+Makefile
+README.md
