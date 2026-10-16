@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# deploy/deploy.sh - Automated deployment orchestrator with rollback gate
+# deploy/deploy.sh - Zero-Downtime Blue/Green Deployment Orchestrator
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 STATE_FILE="${SCRIPT_DIR}/current-release.env"
+UPSTREAM_FILE="${SCRIPT_DIR}/nginx/upstream.conf"
 
 IMAGE="${1:-}"
 VERSION="${2:-}"
@@ -17,78 +18,115 @@ if [ -z "${IMAGE}" ]; then
 fi
 
 echo "=========================================="
-echo " Starting PipeForge Deployment"
-echo " Target Image:   ${IMAGE}"
-echo " Target Version: ${VERSION:-auto}"
-echo " Host Port:      ${HOST_PORT}"
+echo " Starting Zero-Downtime Blue/Green Deploy"
+echo " Candidate Image:   ${IMAGE}"
+echo " Candidate Version: ${VERSION:-auto}"
+echo " Host Ingress Port: ${HOST_PORT}"
 echo "=========================================="
 
 # 1. Verify image exists locally or attempt pull
-echo "==> Verifying image availability..."
 if ! docker image inspect "${IMAGE}" >/dev/null 2>&1; then
-  echo "Image ${IMAGE} not present locally. Attempting pull..."
+  echo "==> Pulling image ${IMAGE}..."
   if ! docker pull "${IMAGE}"; then
-    echo "ERROR: Failed to pull image ${IMAGE}. Deployment aborted."
+    echo "ERROR: Failed to pull ${IMAGE}"
     exit 1
   fi
 fi
-echo "Image verified."
 
-# 2. Record currently running release
-CURRENT_IMAGE=""
-CURRENT_VERSION=""
+# 2. Determine currently active and idle target color
+ACTIVE_COLOR="none"
+ACTIVE_IMAGE=""
+ACTIVE_VERSION=""
+
 if [ -f "${STATE_FILE}" ]; then
   # shellcheck source=/dev/null
   source "${STATE_FILE}"
-  CURRENT_IMAGE="${ACTIVE_IMAGE:-}"
-  CURRENT_VERSION="${ACTIVE_VERSION:-}"
-  echo "Currently active release: ${CURRENT_IMAGE:-none} (version: ${CURRENT_VERSION:-none})"
+  ACTIVE_COLOR="${ACTIVE_COLOR:-blue}"
+  ACTIVE_IMAGE="${ACTIVE_IMAGE:-}"
+  ACTIVE_VERSION="${ACTIVE_VERSION:-}"
 fi
 
-# Write candidate transition state
-cat <<EOF > "${STATE_FILE}"
-ACTIVE_IMAGE="${CURRENT_IMAGE}"
-ACTIVE_VERSION="${CURRENT_VERSION}"
-PREVIOUS_IMAGE="${CURRENT_IMAGE}"
-PREVIOUS_VERSION="${CURRENT_VERSION}"
-CANDIDATE_IMAGE="${IMAGE}"
-CANDIDATE_VERSION="${VERSION}"
-DEPLOYMENT_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+if [ "${ACTIVE_COLOR}" == "blue" ]; then
+  TARGET_COLOR="green"
+  TARGET_PORT=8082
+  TARGET_SERVICE="pipeforge-green"
+else
+  TARGET_COLOR="blue"
+  TARGET_PORT=8081
+  TARGET_SERVICE="pipeforge-blue"
+fi
+
+echo "==> Currently Active: ${ACTIVE_COLOR} (${ACTIVE_IMAGE:-none})"
+echo "==> Deploying Target: ${TARGET_COLOR} on internal port ${TARGET_PORT}"
+
+# 3. Start candidate on target environment
+if [ "${TARGET_COLOR}" == "blue" ]; then
+  BLUE_IMAGE="${IMAGE}" docker compose -f "${PROJECT_ROOT}/compose.yaml" up -d --no-recreate pipeforge-blue
+else
+  GREEN_IMAGE="${IMAGE}" docker compose -f "${PROJECT_ROOT}/compose.yaml" up -d --no-recreate pipeforge-green
+fi
+
+# 4. Verify proxy container is running
+if ! docker ps --format '{{.Names}}' | grep -q "^pipeforge-proxy$"; then
+  echo "==> Starting ingress reverse proxy..."
+  docker compose -f "${PROJECT_ROOT}/compose.yaml" up -d proxy
+fi
+
+# 5. Run verification gate against candidate instance
+echo "==> Running candidate smoke tests on target ${TARGET_COLOR} (port ${TARGET_PORT})..."
+if "${SCRIPT_DIR}/smoke-test.sh" "127.0.0.1" "${TARGET_PORT}" "${VERSION}"; then
+  echo "==> Candidate passed verification! Switching traffic to ${TARGET_COLOR}..."
+
+  # Update upstream configuration
+  cat <<EOF > "${UPSTREAM_FILE}"
+upstream pipeforge_backend {
+    server ${TARGET_SERVICE}:8080;
+}
 EOF
 
-# 3. Deploy Candidate Container
-echo "==> Starting candidate container..."
-PIPEFORGE_IMAGE="${IMAGE}" \
-RELEASE_VERSION="${VERSION}" \
-HOST_PORT="${HOST_PORT}" \
-docker compose -f "${PROJECT_ROOT}/compose.yaml" up -d --remove-orphans
+  # Reload Nginx without dropping connections
+  docker exec pipeforge-proxy nginx -s reload
+  echo "==> Traffic switched to ${TARGET_COLOR} with ZERO DOWNTIME."
 
-# 4. Run Smoke Tests & Verification Gate
-echo "==> Running release verification gate..."
-if "${SCRIPT_DIR}/smoke-test.sh" "127.0.0.1" "${HOST_PORT}" "${VERSION}"; then
-  echo "==> Release verification PASSED! Promoting candidate release."
+  # Stop previous idle environment
+  if [ "${ACTIVE_COLOR}" != "none" ]; then
+    echo "==> Stopping previous environment (${ACTIVE_COLOR})..."
+    if [ "${ACTIVE_COLOR}" == "blue" ]; then
+      docker compose -f "${PROJECT_ROOT}/compose.yaml" stop pipeforge-blue || true
+    else
+      docker compose -f "${PROJECT_ROOT}/compose.yaml" stop pipeforge-green || true
+    fi
+  fi
+
+  # Update state file
   cat <<EOF > "${STATE_FILE}"
+ACTIVE_COLOR="${TARGET_COLOR}"
 ACTIVE_IMAGE="${IMAGE}"
 ACTIVE_VERSION="${VERSION}"
 ACTIVE_DEPLOYED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-PREVIOUS_IMAGE="${CURRENT_IMAGE}"
-PREVIOUS_VERSION="${CURRENT_VERSION}"
+PREVIOUS_COLOR="${ACTIVE_COLOR}"
+PREVIOUS_IMAGE="${ACTIVE_IMAGE}"
+PREVIOUS_VERSION="${ACTIVE_VERSION}"
 EOF
+
   echo "=========================================="
-  echo " DEPLOYMENT SUCCEEDED: ${IMAGE}"
+  echo " BLUE/GREEN DEPLOYMENT SUCCEEDED!"
+  echo " Active: ${TARGET_COLOR} (${IMAGE})"
   echo "=========================================="
   exit 0
 else
-  echo "==> ERROR: Release verification FAILED for candidate ${IMAGE}!"
-  if [ -n "${CURRENT_IMAGE}" ]; then
-    echo "==> Triggering automated rollback to previous known-good release (${CURRENT_IMAGE})..."
-    "${SCRIPT_DIR}/rollback.sh"
-    echo "Rollback successfully restored ${CURRENT_IMAGE}."
-  else
-    echo "WARNING: No previous release existed to roll back to."
-  fi
+  echo "==> ERROR: Candidate verification FAILED on ${TARGET_COLOR}!"
+  echo "==> Preserving diagnostic logs..."
+  mkdir -p "${SCRIPT_DIR}/diagnostics"
+  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+  docker logs "${TARGET_SERVICE}" > "${SCRIPT_DIR}/diagnostics/failed_candidate_${TARGET_COLOR}_${TIMESTAMP}.log" 2>&1 || true
+
+  echo "==> Tearing down failed candidate (${TARGET_COLOR})..."
+  docker compose -f "${PROJECT_ROOT}/compose.yaml" stop "${TARGET_SERVICE}" || true
+
+  echo "==> Traffic remains safely on ${ACTIVE_COLOR} (${ACTIVE_IMAGE}). Zero downtime impact!"
   echo "=========================================="
-  echo " DEPLOYMENT FAILED AND ROLLED BACK"
+  echo " DEPLOYMENT REJECTED — ACTIVE STATE PRESERVED"
   echo "=========================================="
   exit 1
 fi

@@ -1,0 +1,22 @@
+{"time":"2026-10-16T05:20:33.723593956Z","level":"INFO","msg":"starting pipeforge-service","version":"1.0.0","commit":"test1234","build_time":"2026-10-16T10:40:57Z"}
+{"time":"2026-10-16T05:20:33.724786296Z","level":"INFO","msg":"http server listening","addr":"0.0.0.0:8080"}
+{"time":"2026-10-16T05:20:38.866645014Z","level":"INFO","msg":"http request","method":"GET","path":"/healthz","status":200,"duration_ms":0,"remote_addr":"127.0.0.1:51174","user_agent":"curl/8.14.1"}
+{"time":"2026-10-16T05:20:41.952144836Z","level":"INFO","msg":"http request","method":"GET","path":"/healthz","status":200,"duration_ms":0,"remote_addr":"127.0.0.1:51184","user_agent":"curl/8.14.1"}
+{"time":"2026-10-16T05:20:47.595272862Z","level":"INFO","msg":"http request","method":"GET","path":"/healthz","status":200,"duration_ms":0,"remote_addr":"127.0.0.1:40364","user_agent":"curl/8.14.1"}
+{"time":"2026-10-16T05:20:48.57436219Z","level":"INFO","msg":"http request","method":"GET","path":"/readyz","status":200,"duration_ms":0,"remote_addr":"172.20.0.1:38260","user_agent":"curl/8.5.0"}
+{"time":"2026-10-16T05:20:48.593049974Z","level":"INFO","msg":"http request","method":"GET","path":"/healthz","status":200,"duration_ms":0,"remote_addr":"172.20.0.1:38272","user_agent":"curl/8.5.0"}
+{"time":"2026-10-16T05:20:48.611200208Z","level":"INFO","msg":"http request","method":"GET","path":"/version","status":200,"duration_ms":0,"remote_addr":"172.20.0.1:38280","user_agent":"curl/8.5.0"}
+{"time":"2026-10-16T05:20:50.779199657Z","level":"INFO","msg":"http request","method":"GET","path":"/healthz","status":200,"duration_ms":0,"remote_addr":"127.0.0.1:40380","user_agent":"curl/8.14.1"}
+{"time":"2026-10-16T05:20:53.922034133Z","level":"INFO","msg":"http request","method":"GET","path":"/healthz","status":200,"duration_ms":0,"remote_addr":"127.0.0.1:40384","user_agent":"curl/8.14.1"}
+{"time":"2026-10-16T05:20:55.965194277Z","level":"INFO","msg":"http request","method":"GET","path":"/version","status":200,"duration_ms":0,"remote_addr":"172.20.0.3:54368","user_agent":"curl/8.5.0"}
+{"time":"2026-10-16T05:20:57.017906986Z","level":"INFO","msg":"http request","method":"GET","path":"/healthz","status":200,"duration_ms":0,"remote_addr":"127.0.0.1:45884","user_agent":"curl/8.14.1"}
+{"time":"2026-10-16T05:21:00.108937578Z","level":"INFO","msg":"http request","method":"GET","path":"/healthz","status":200,"duration_ms":0,"remote_addr":"127.0.0.1:45888","user_agent":"curl/8.14.1"}
+{"time":"2026-10-16T05:21:03.217352989Z","level":"INFO","msg":"http request","method":"GET","path":"/healthz","status":200,"duration_ms":0,"remote_addr":"127.0.0.1:45900","user_agent":"curl/8.14.1"}
+{"time":"2026-10-16T05:21:04.826607954Z","level":"INFO","msg":"shutdown signal received","signal":"terminated"}
+{"time":"2026-10-16T05:21:04.826636774Z","level":"INFO","msg":"marked service unready, draining active connections"}
+{"time":"2026-10-16T05:21:04.826867805Z","level":"INFO","msg":"pipeforge-service stopped cleanly"}
+{"time":"2026-10-16T05:21:14.328220335Z","level":"INFO","msg":"starting pipeforge-service","version":"1.0.0","commit":"test1234","build_time":"2026-10-16T10:40:57Z"}
+{"time":"2026-10-16T05:21:14.329195321Z","level":"INFO","msg":"http server listening","addr":"0.0.0.0:8080"}
+{"time":"2026-10-16T05:21:14.464178235Z","level":"INFO","msg":"http request","method":"GET","path":"/readyz","status":200,"duration_ms":0,"remote_addr":"172.20.0.1:34186","user_agent":"curl/8.5.0"}
+{"time":"2026-10-16T05:21:14.479546603Z","level":"INFO","msg":"http request","method":"GET","path":"/healthz","status":200,"duration_ms":0,"remote_addr":"172.20.0.1:34202","user_agent":"curl/8.5.0"}
+{"time":"2026-10-16T05:21:14.494317315Z","level":"INFO","msg":"http request","method":"GET","path":"/version","status":200,"duration_ms":0,"remote_addr":"172.20.0.1:34206","user_agent":"curl/8.5.0"}

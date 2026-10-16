@@ -5,37 +5,28 @@
 Deployments in PipeForge prioritize **system availability** and **deterministic recovery**.
 Instead of blind container recreation, deployment is treated as a state machine with a mandatory verification gate.
 
-## 2. Deployment State Machine
+## 2. Zero-Downtime Blue/Green Architecture
 
 ```mermaid
-stateDiagram-v2
-    [*] --> VerifyImage
-    VerifyImage --> RecordCurrentRelease
-    RecordCurrentRelease --> StartCandidate
-    StartCandidate --> SmokeTestGate
+flowchart TD
+    Client["Client Traffic (Port 8085)"] --> Nginx["Nginx Reverse Proxy (pipeforge-proxy)"]
 
-    state SmokeTestGate {
-        [*] --> PollReadyz
-        PollReadyz --> CheckHealthz: 200 OK
-        CheckHealthz --> VerifyVersion: 200 OK
-    }
+    subgraph Blue_Green_Environments["Isolated Environments"]
+        Nginx -.->|"Active Traffic (nginx -s reload)"| Green["pipeforge-green (Port 8082)"]
+        Nginx -.-x|"Traffic Blocked until Verified"| Blue["pipeforge-blue (Port 8081)"]
+    end
 
-    SmokeTestGate --> ReleasePromoted: All Checks Pass
-    SmokeTestGate --> TriggerRollback: Timeout / Failed Probe
-
-    state TriggerRollback {
-        CaptureFailureLogs --> StopBrokenContainer
-        StopBrokenContainer --> RestorePreviousImage
-        RestorePreviousImage --> ReVerifyRestoredRelease
-    }
-
-    ReleasePromoted --> [*]: Exit 0
-    ReVerifyRestoredRelease --> [*]: Exit 1 (Release Rejected)
+    subgraph Verification_Gate["Release Verification Gate"]
+        SmokeTest["smoke-test.sh"] -->|"Direct Probe"| Blue
+        SmokeTest -->|"Pass -> Switch Upstream"| Nginx
+        SmokeTest -->|"Fail -> Tear Down Candidate"| Blue
+    end
 ```
 
 ## 3. Operational Guarantees
 
-1. **Active Release Tracking**: Before any change occurs, the currently running release tag is snapshotted into `deploy/current-release.env`.
-2. **Bounded Polling**: `smoke-test.sh` retries `/readyz` up to 10 times at 2-second intervals. It never loops indefinitely.
-3. **Automated Rollback**: If the candidate fails any check, `rollback.sh` is immediately executed.
-4. **Failure Preservation**: The broken container's logs are automatically saved to `deploy/diagnostics/failed_release_<timestamp>.log` before the container is destroyed, allowing engineers to conduct an immediate root-cause analysis.
+1. **True Zero Downtime**: Active traffic is served continuously by the current color while the candidate color is tested in isolation. Upstream traffic is switched instantly via `nginx -s reload`.
+2. **Deterministic Rollback & Isolation**: A broken release candidate never receives user traffic. If verification fails, the candidate container is stopped immediately, preserving active traffic without dropping connections.
+3. **Active Release Tracking**: Before any change occurs, the currently running release tag and color are snapshotted into `deploy/current-release.env`.
+4. **Bounded Polling**: `smoke-test.sh` retries `/readyz` up to 10 times at 2-second intervals. It never loops indefinitely.
+5. **Diagnostic Archiving**: Failed candidate logs are saved to `deploy/diagnostics/failed_candidate_<color>_<timestamp>.log` before container termination.
