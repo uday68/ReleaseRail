@@ -6,7 +6,7 @@
 *.dll
 *.so
 *.dylib
-pipeforge-service
+/pipeforge-service
 
 # Test and coverage artifacts
 *.out
